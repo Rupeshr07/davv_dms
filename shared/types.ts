@@ -15,6 +15,7 @@ export type SubjectOption = {
 }
 
 export type SessionUser = {
+  accountId?: number
   staffId: string
   username: string
   displayName: string

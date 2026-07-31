@@ -9,10 +9,11 @@ type NamedOptionRow = DatabaseRow & {
 
 export const getBranches = async (): Promise<BranchOption[]> => {
   const [rows] = await pool.query<NamedOptionRow[]>(
-    `SELECT id, name
-     FROM branches
+    `SELECT id, branch_name AS name
+     FROM tb_branches
      WHERE is_active = 1
-     ORDER BY name ASC`,
+       AND status = 'Active'
+     ORDER BY branch_name ASC`,
   )
 
   return rows.map((row) => ({
@@ -23,10 +24,11 @@ export const getBranches = async (): Promise<BranchOption[]> => {
 
 export const getSubjects = async (): Promise<SubjectOption[]> => {
   const [rows] = await pool.query<NamedOptionRow[]>(
-    `SELECT id, name
-     FROM subjects
+    `SELECT id, subject_name AS name
+     FROM tb_subject
      WHERE is_active = 1
-     ORDER BY name ASC`,
+       AND status = 1
+     ORDER BY subject_name ASC`,
   )
 
   return rows.map((row) => ({

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { env } from '../config/env.js'
 import { asyncHandler } from '../lib/async-handler.js'
 import { authenticateUser } from '../services/auth.service.js'
 
@@ -32,7 +33,12 @@ router.post(
       })
     })
 
-    res.clearCookie('davv_dms_session')
+    res.clearCookie('davv_dms_session', {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: env.nodeEnv === 'production',
+    })
     res.status(200).json({
       success: true,
       message: 'Logout successful.',

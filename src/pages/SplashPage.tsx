@@ -13,11 +13,21 @@ export default function SplashPage() {
   const [status, setStatus] = useState('Checking internet connectivity...')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const minimumSplashDelay = 6000
 
   useEffect(() => {
     let active = true
+    const waitForMinimumSplash = async (startedAt: number) => {
+      const elapsed = Date.now() - startedAt
+      const remaining = Math.max(0, minimumSplashDelay - elapsed)
+      if (remaining > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remaining))
+      }
+    }
 
     const runStartupChecks = async () => {
+      const startedAt = Date.now()
+
       if (!navigator.onLine) {
         if (active) {
           setLoading(false)
@@ -44,9 +54,15 @@ export default function SplashPage() {
           return
         }
 
+        await waitForMinimumSplash(startedAt)
+        if (!active) {
+          return
+        }
+
         navigate(user ? '/dashboard' : '/login', { replace: true })
       } catch (startupError) {
         if (active) {
+          await waitForMinimumSplash(startedAt)
           setLoading(false)
           setError(getApiErrorMessage(startupError))
           setStatus('Registration verification failed.')
@@ -73,7 +89,7 @@ export default function SplashPage() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [initialize, navigate])
+  }, [initialize, minimumSplashDelay, navigate])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">

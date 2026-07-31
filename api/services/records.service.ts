@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { PoolConnection } from 'mysql2/promise'
 import { z } from 'zod'
@@ -43,13 +42,18 @@ type UpdateRecordInput = RecordInput & {
   removeFileIds?: string[]
 }
 
-type OptionRow = DatabaseRow & {
+type BranchRow = DatabaseRow & {
+  id: number
+  name: string
+}
+
+type SubjectRow = DatabaseRow & {
   id: number
   name: string
 }
 
 type RecordRow = DatabaseRow & {
-  id: string
+  id: number
   reference_number: string
   branch_id: number
   branch_name: string
@@ -59,37 +63,28 @@ type RecordRow = DatabaseRow & {
   remark: string | null
   staff_id: string
   record_status: string
-  total_pages: number
-  document_type: DocumentType
-  document_size_bytes: number
+  total_pages: number | null
+  document_type: string
+  file_size: number | null
   directory_name: string
+  uploaded_at: string | Date | null
+  modified_at: string | Date | null
   created_at: string | Date
   updated_at: string | Date
 }
 
-type RecordFileRow = DatabaseRow & {
-  id: string
-  record_id: string
-  original_name: string
-  stored_name: string
-  mime_type: string
-  size_bytes: number
-  page_count: number | null
-  category_label: string | null
-  relative_path: string
+type FileRow = DatabaseRow & {
+  id: number
+  record_id: number
+  file_name: string
+  original_name: string | null
+  file_path: string
+  mime_type: string | null
+  extension: string | null
+  page_number: number | null
+  file_size: number | null
   created_at: string | Date
   updated_at: string | Date
-}
-
-type RecordSearchRow = DatabaseRow & {
-  id: string
-  reference_number: string
-  branch_name: string
-  subject_name: string
-  record_date: string | Date
-  uploaded_at: string | Date
-  modified_at: string | Date
-  file_count: number
 }
 
 type CountRow = DatabaseRow & {
@@ -100,23 +95,56 @@ type SequenceRow = DatabaseRow & {
   max_sequence: number | null
 }
 
-const toIsoString = (value: string | Date): string => new Date(value).toISOString()
+type InsertIdRow = DatabaseRow & {
+  id: number
+}
 
-const mapFileRow = (row: RecordFileRow): RecordFile => ({
-  id: row.id,
-  originalName: row.original_name,
-  storedName: row.stored_name,
-  mimeType: row.mime_type,
-  sizeBytes: Number(row.size_bytes),
-  relativePath: row.relative_path,
-  pageCount: row.page_count,
-  categoryLabel: row.category_label,
+const toIsoString = (value: string | Date | null | undefined): string => {
+  if (!value) {
+    return new Date().toISOString()
+  }
+
+  return new Date(value).toISOString()
+}
+
+const deriveDocumentTypeFromMime = (mimeType: string): DocumentType => {
+  if (mimeType === 'application/pdf') {
+    return 'PDF'
+  }
+
+  if (mimeType === 'image/png') {
+    return 'PNG'
+  }
+
+  return 'JPEG'
+}
+
+const deriveDocumentType = (files: Array<Pick<RecordFile, 'mimeType'>>): DocumentType => {
+  if (!files.length) {
+    return 'PDF'
+  }
+
+  return deriveDocumentTypeFromMime(files[0].mimeType)
+}
+
+const buildRecordFileSummary = (fileCount: number): string =>
+  `${fileCount} file${fileCount === 1 ? '' : 's'}`
+
+const mapFileRow = (row: FileRow): RecordFile => ({
+  id: String(row.id),
+  originalName: row.original_name || row.file_name,
+  storedName: row.file_name,
+  mimeType: row.mime_type || 'application/octet-stream',
+  sizeBytes: Number(row.file_size ?? 0),
+  relativePath: row.file_path,
+  pageCount: row.page_number,
+  categoryLabel: null,
   createdAt: toIsoString(row.created_at),
   updatedAt: toIsoString(row.updated_at),
 })
 
 const mapRecordRow = (row: RecordRow, files: RecordFile[]): RecordEntity => ({
-  id: row.id,
+  id: String(row.id),
   referenceNumber: row.reference_number,
   branchId: row.branch_id,
   branchName: row.branch_name,
@@ -125,121 +153,71 @@ const mapRecordRow = (row: RecordRow, files: RecordFile[]): RecordEntity => ({
   recordDate: new Date(row.record_date).toISOString().slice(0, 10),
   remark: row.remark ?? '',
   staffId: row.staff_id,
-  recordStatus: row.record_status as 'ACTIVE' | 'ARCHIVED',
-  totalPages: Number(row.total_pages),
-  documentType: row.document_type,
-  documentSizeBytes: Number(row.document_size_bytes),
+  recordStatus: (row.record_status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE'),
+  totalPages: Number(row.total_pages ?? files.length),
+  documentType:
+    row.document_type === 'PNG'
+      ? 'PNG'
+      : row.document_type === 'JPEG' || row.document_type === 'JPG'
+        ? 'JPEG'
+        : 'PDF',
+  documentSizeBytes: Number(row.file_size ?? 0),
   directoryName: row.directory_name,
-  createdAt: toIsoString(row.created_at),
-  updatedAt: toIsoString(row.updated_at),
+  createdAt: toIsoString(row.uploaded_at ?? row.created_at),
+  updatedAt: toIsoString(row.modified_at ?? row.updated_at),
   files,
 })
 
-const deriveDocumentType = (files: RecordFile[]): DocumentType => {
-  const mimeTypes = new Set(
-    files.map((file) => {
-      if (file.mimeType === 'application/pdf') return 'PDF'
-      if (file.mimeType === 'image/png') return 'PNG'
-      return 'JPEG'
-    }),
-  )
-
-  if (mimeTypes.size === 1) {
-    return [...mimeTypes][0] as DocumentType
-  }
-
-  return 'MIXED'
-}
-
-const buildRecordFileSummary = (fileCount: number): string =>
-  `${fileCount} file${fileCount === 1 ? '' : 's'}`
-
-const insertRecordFiles = async (
-  db: QueryRunner,
-  recordId: string,
-  files: RecordFile[],
-): Promise<void> => {
-  if (!files.length) {
-    return
-  }
-
-  const placeholders = files.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')
-  const values = files.flatMap((file) => [
-    file.id,
-    recordId,
-    file.originalName,
-    file.storedName,
-    file.mimeType,
-    file.sizeBytes,
-    file.pageCount,
-    file.categoryLabel,
-    file.relativePath,
-    new Date(file.createdAt),
-  ])
-
-  await db.query(
-    `INSERT INTO record_files (
-      id,
-      record_id,
-      original_name,
-      stored_name,
-      mime_type,
-      size_bytes,
-      page_count,
-      category_label,
-      relative_path,
-      created_at
-    ) VALUES ${placeholders}`,
-    values,
-  )
-}
-
-const getRecordFiles = async (recordId: string, db: QueryRunner): Promise<RecordFile[]> => {
-  const [rows] = await db.query<RecordFileRow[]>(
+const getRecordFiles = async (recordId: number, db: QueryRunner): Promise<RecordFile[]> => {
+  const [rows] = await db.query<FileRow[]>(
     `SELECT
         id,
         record_id,
+        file_name,
         original_name,
-        stored_name,
+        file_path,
         mime_type,
-        size_bytes,
-        page_count,
-        category_label,
-        relative_path,
+        extension,
+        page_number,
+        file_size,
         created_at,
         updated_at
-     FROM record_files
+     FROM files
      WHERE record_id = ?
-     ORDER BY created_at ASC, original_name ASC`,
+     ORDER BY id ASC`,
     [recordId],
   )
 
   return rows.map(mapFileRow)
 }
 
-const getRecordRowById = async (recordId: string, db: QueryRunner): Promise<RecordRow> => {
+const getRecordRowById = async (recordId: number, db: QueryRunner): Promise<RecordRow> => {
   const [rows] = await db.query<RecordRow[]>(
     `SELECT
         r.id,
         r.reference_number,
         r.branch_id,
-        b.name AS branch_name,
+        b.branch_name AS branch_name,
         r.subject_id,
-        s.name AS subject_name,
+        s.subject_name AS subject_name,
         r.record_date,
         r.remark,
-        r.staff_id,
+        a.staff_id,
         r.record_status,
         r.total_pages,
         r.document_type,
-        r.document_size_bytes,
+        r.file_size,
         r.directory_name,
+        r.uploaded_at,
+        r.modified_at,
         r.created_at,
         r.updated_at
-     FROM records r
-     INNER JOIN branches b ON b.id = r.branch_id
-     INNER JOIN subjects s ON s.id = r.subject_id
+     FROM tb_records r
+     INNER JOIN tb_branches b ON b.id = r.branch_id
+     INNER JOIN tb_subject s ON s.id = r.subject_id
+     INNER JOIN tb_account a ON a.id = r.uploaded_by
      WHERE r.id = ?
+       AND r.record_status <> 'DELETED'
      LIMIT 1`,
     [recordId],
   )
@@ -252,7 +230,7 @@ const getRecordRowById = async (recordId: string, db: QueryRunner): Promise<Reco
   return row
 }
 
-const getRecordByIdInternal = async (recordId: string, db: QueryRunner): Promise<RecordEntity> => {
+const getRecordByIdInternal = async (recordId: number, db: QueryRunner): Promise<RecordEntity> => {
   const [row, files] = await Promise.all([getRecordRowById(recordId, db), getRecordFiles(recordId, db)])
   return mapRecordRow(row, files)
 }
@@ -260,7 +238,7 @@ const getRecordByIdInternal = async (recordId: string, db: QueryRunner): Promise
 const getNextSequence = async (db: QueryRunner, year: number): Promise<number> => {
   const [rows] = await db.query<SequenceRow[]>(
     `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(reference_number, '/', -1) AS UNSIGNED)), 0) AS max_sequence
-     FROM records
+     FROM tb_records
      WHERE reference_number LIKE ?`,
     [`DAVV/${year}/%`],
   )
@@ -268,65 +246,62 @@ const getNextSequence = async (db: QueryRunner, year: number): Promise<number> =
   return Number(rows[0]?.max_sequence ?? 0) + 1
 }
 
-const findBranchAndSubject = async (
+const ensureValidBranchAndSubject = async (
   db: QueryRunner,
   branchId: number,
   subjectId: number,
-): Promise<{ branch: OptionRow; subject: OptionRow }> => {
+): Promise<void> => {
   const [[branchRows], [subjectRows]] = await Promise.all([
-    db.query<OptionRow[]>(
-      `SELECT id, name
-       FROM branches
-       WHERE id = ? AND is_active = 1
+    db.query<BranchRow[]>(
+      `SELECT id, branch_name AS name
+       FROM tb_branches
+       WHERE id = ?
+         AND is_active = 1
+         AND status = 'Active'
        LIMIT 1`,
       [branchId],
     ),
-    db.query<OptionRow[]>(
-      `SELECT id, name
-       FROM subjects
-       WHERE id = ? AND is_active = 1
+    db.query<SubjectRow[]>(
+      `SELECT id, subject_name AS name
+       FROM tb_subject
+       WHERE id = ?
+         AND is_active = 1
+         AND status = 1
        LIMIT 1`,
       [subjectId],
     ),
   ])
 
-  const branch = branchRows[0]
-  const subject = subjectRows[0]
-
-  if (!branch || !subject) {
+  if (!branchRows[0] || !subjectRows[0]) {
     throw new ApiError(400, 'Invalid branch or subject selected.')
   }
-
-  return { branch, subject }
 }
 
 const normalizeFiles = async (
   uploads: Express.Multer.File[],
   directoryName: string,
-): Promise<{ files: RecordFile[]; movedRelativePaths: string[] }> => {
+): Promise<{ files: Omit<RecordFile, 'id'>[]; movedRelativePaths: string[] }> => {
   if (uploads.some((upload) => !acceptedMimeTypes.has(upload.mimetype))) {
     throw new ApiError(400, 'Only PDF, PNG, and JPEG files are allowed.')
   }
 
-  const files: RecordFile[] = []
+  const files: Omit<RecordFile, 'id'>[] = []
   const movedRelativePaths: string[] = []
   const now = new Date().toISOString()
 
   for (const upload of uploads) {
-    const fileId = randomUUID()
-    const extension = path.extname(upload.originalname) || '.bin'
-    const storedName = `${randomUUID()}${extension.toLowerCase()}`
+    const extension = (path.extname(upload.originalname) || '.bin').toLowerCase()
+    const storedName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`
     const relativePath = await moveUploadToRecordFolder(upload.path, directoryName, storedName)
     movedRelativePaths.push(relativePath)
 
     files.push({
-      id: fileId,
       originalName: upload.originalname,
       storedName,
       mimeType: upload.mimetype,
       sizeBytes: upload.size,
       relativePath,
-      pageCount: null,
+      pageCount: 1,
       categoryLabel: null,
       createdAt: now,
       updatedAt: now,
@@ -336,8 +311,49 @@ const normalizeFiles = async (
   return { files, movedRelativePaths }
 }
 
+const insertFiles = async (
+  db: QueryRunner,
+  recordId: number,
+  files: Omit<RecordFile, 'id'>[],
+  accountId: number | null,
+): Promise<void> => {
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index]
+    const extension = path.extname(file.storedName).replace('.', '').toLowerCase()
+
+    await db.query(
+      `INSERT INTO files (
+        record_id,
+        file_name,
+        original_name,
+        file_path,
+        mime_type,
+        extension,
+        page_number,
+        file_size,
+        is_primary,
+        created_by,
+        updated_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        recordId,
+        file.storedName,
+        file.originalName,
+        file.relativePath,
+        file.mimeType,
+        extension,
+        file.pageCount ?? 1,
+        file.sizeBytes,
+        index === 0 ? 1 : 0,
+        accountId,
+        accountId,
+      ],
+    )
+  }
+}
+
 const buildWhereClause = (params: RecordSearchParams) => {
-  const conditions: string[] = []
+  const conditions = [`r.record_status <> 'DELETED'`]
   const values: Array<number | string> = []
 
   if (params.branchId) {
@@ -371,7 +387,7 @@ const buildWhereClause = (params: RecordSearchParams) => {
   }
 
   return {
-    clause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+    clause: `WHERE ${conditions.join(' AND ')}`,
     values,
   }
 }
@@ -385,11 +401,15 @@ export const getNextReferenceNumber = async (): Promise<string> => {
 export const createRecord = async (
   payload: RecordInput,
   uploads: Express.Multer.File[],
-  staffId: string,
+  accountId: number,
 ): Promise<RecordEntity> => {
   const parsed = recordSchema.safeParse(payload)
   if (!parsed.success) {
     throw new ApiError(400, parsed.error.issues[0]?.message ?? 'Invalid record payload.')
+  }
+
+  if (!accountId) {
+    throw new ApiError(401, 'Authentication required.')
   }
 
   if (!uploads.length) {
@@ -401,7 +421,7 @@ export const createRecord = async (
 
   try {
     return await withTransaction(async (connection) => {
-      await findBranchAndSubject(connection, parsed.data.branchId, parsed.data.subjectId)
+      await ensureValidBranchAndSubject(connection, parsed.data.branchId, parsed.data.subjectId)
 
       const year = new Date(parsed.data.recordDate).getFullYear() || new Date().getFullYear()
       const referenceNumber = buildReferenceNumber(await getNextSequence(connection, year), year)
@@ -409,46 +429,46 @@ export const createRecord = async (
 
       const normalizedUploads = await normalizeFiles(uploads, directoryName)
       movedRelativePaths = normalizedUploads.movedRelativePaths
-
-      const recordId = randomUUID()
-      const files = normalizedUploads.files
-      const now = new Date()
+      const documentType = deriveDocumentType(normalizedUploads.files)
+      const totalFileSize = normalizedUploads.files.reduce((sum, file) => sum + file.sizeBytes, 0)
 
       await connection.query(
-        `INSERT INTO records (
-          id,
+        `INSERT INTO tb_records (
           reference_number,
           branch_id,
           subject_id,
           record_date,
           remark,
-          staff_id,
-          record_status,
-          total_pages,
           document_type,
-          document_size_bytes,
+          total_pages,
+          file_size,
           directory_name,
-          created_at,
-          updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)`,
+          record_status,
+          status,
+          uploaded_by,
+          uploaded_at,
+          modified_by,
+          modified_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, NOW(), ?, NOW())`,
         [
-          recordId,
           referenceNumber,
           parsed.data.branchId,
           parsed.data.subjectId,
           parsed.data.recordDate,
           parsed.data.remark ?? '',
-          staffId,
-          files.length,
-          deriveDocumentType(files),
-          files.reduce((sum, file) => sum + file.sizeBytes, 0),
+          documentType,
+          normalizedUploads.files.length,
+          totalFileSize,
           directoryName,
-          now,
-          now,
+          accountId,
+          accountId,
         ],
       )
 
-      await insertRecordFiles(connection, recordId, files)
+      const [idRows] = await connection.query<InsertIdRow[]>('SELECT LAST_INSERT_ID() AS id')
+      const recordId = Number(idRows[0]?.id)
+
+      await insertFiles(connection, recordId, normalizedUploads.files, accountId)
       return getRecordByIdInternal(recordId, connection)
     })
   } catch (error) {
@@ -467,7 +487,7 @@ export const searchRecords = async (params: RecordSearchParams): Promise<RecordS
 
   const [countRows] = await pool.query<CountRow[]>(
     `SELECT COUNT(*) AS total
-     FROM records r
+     FROM tb_records r
      ${clause}`,
     values,
   )
@@ -476,44 +496,67 @@ export const searchRecords = async (params: RecordSearchParams): Promise<RecordS
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
   const offset = (page - 1) * pageSize
 
-  const [rows] = await pool.query<RecordSearchRow[]>(
+  const [rows] = await pool.query<(RecordRow & { file_count: number })[]>(
     `SELECT
         r.id,
         r.reference_number,
-        b.name AS branch_name,
-        s.name AS subject_name,
+        r.branch_id,
+        b.branch_name AS branch_name,
+        r.subject_id,
+        s.subject_name AS subject_name,
         r.record_date,
-        r.created_at AS uploaded_at,
-        r.updated_at AS modified_at,
-        COUNT(rf.id) AS file_count
-     FROM records r
-     INNER JOIN branches b ON b.id = r.branch_id
-     INNER JOIN subjects s ON s.id = r.subject_id
-     LEFT JOIN record_files rf ON rf.record_id = r.id
+        r.remark,
+        a.staff_id,
+        r.record_status,
+        r.total_pages,
+        r.document_type,
+        r.file_size,
+        r.directory_name,
+        r.uploaded_at,
+        r.modified_at,
+        r.created_at,
+        r.updated_at,
+        COUNT(f.id) AS file_count
+     FROM tb_records r
+     INNER JOIN tb_branches b ON b.id = r.branch_id
+     INNER JOIN tb_subject s ON s.id = r.subject_id
+     INNER JOIN tb_account a ON a.id = r.uploaded_by
+     LEFT JOIN files f ON f.record_id = r.id
      ${clause}
      GROUP BY
-       r.id,
-       r.reference_number,
-       b.name,
-       s.name,
-       r.record_date,
-       r.created_at,
-       r.updated_at
-     ORDER BY r.record_date DESC, r.updated_at DESC
+        r.id,
+        r.reference_number,
+        r.branch_id,
+        b.branch_name,
+        r.subject_id,
+        s.subject_name,
+        r.record_date,
+        r.remark,
+        a.staff_id,
+        r.record_status,
+        r.total_pages,
+        r.document_type,
+        r.file_size,
+        r.directory_name,
+        r.uploaded_at,
+        r.modified_at,
+        r.created_at,
+        r.updated_at
+     ORDER BY r.record_date DESC, COALESCE(r.modified_at, r.updated_at) DESC
      LIMIT ? OFFSET ?`,
     [...values, pageSize, offset],
   )
 
   return {
     items: rows.map((row) => ({
-      id: row.id,
+      id: String(row.id),
       referenceNumber: row.reference_number,
       branchName: row.branch_name,
       subjectName: row.subject_name,
       recordDate: new Date(row.record_date).toISOString().slice(0, 10),
       recordFileSummary: buildRecordFileSummary(Number(row.file_count)),
-      uploadedAt: toIsoString(row.uploaded_at),
-      modifiedAt: toIsoString(row.modified_at),
+      uploadedAt: toIsoString(row.uploaded_at ?? row.created_at),
+      modifiedAt: toIsoString(row.modified_at ?? row.updated_at),
     })),
     page,
     pageSize,
@@ -526,8 +569,14 @@ export const searchRecords = async (params: RecordSearchParams): Promise<RecordS
   }
 }
 
-export const getRecordById = async (recordId: string): Promise<RecordEntity> =>
-  getRecordByIdInternal(recordId, pool)
+export const getRecordById = async (recordId: string): Promise<RecordEntity> => {
+  const numericRecordId = Number(recordId)
+  if (!numericRecordId) {
+    throw new ApiError(404, 'Record not found.')
+  }
+
+  return getRecordByIdInternal(numericRecordId, pool)
+}
 
 export const updateRecord = async (
   recordId: string,
@@ -539,67 +588,78 @@ export const updateRecord = async (
     throw new ApiError(400, parsed.error.issues[0]?.message ?? 'Invalid record payload.')
   }
 
-  const removedFileIds = payload.removeFileIds ?? []
-  const removeSet = new Set(removedFileIds)
+  const numericRecordId = Number(recordId)
+  if (!numericRecordId) {
+    throw new ApiError(404, 'Record not found.')
+  }
+
+  const removedFileIds = (payload.removeFileIds ?? [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+
   let movedRelativePaths: string[] = []
   let removedFiles: RecordFile[] = []
 
   try {
-    const record = await withTransaction(async (connection) => {
-      const existingRecord = await getRecordByIdInternal(recordId, connection)
-      await findBranchAndSubject(connection, parsed.data.branchId, parsed.data.subjectId)
+    const updatedRecord = await withTransaction(async (connection) => {
+      const existingRecord = await getRecordByIdInternal(numericRecordId, connection)
+      await ensureValidBranchAndSubject(connection, parsed.data.branchId, parsed.data.subjectId)
 
-      removedFiles = existingRecord.files.filter((file) => removeSet.has(file.id))
-      const keptFiles = existingRecord.files.filter((file) => !removeSet.has(file.id))
+      removedFiles = existingRecord.files.filter((file) => removedFileIds.includes(Number(file.id)))
+      const keptFiles = existingRecord.files.filter((file) => !removedFileIds.includes(Number(file.id)))
       const normalizedUploads = await normalizeFiles(uploads, existingRecord.directoryName)
       movedRelativePaths = normalizedUploads.movedRelativePaths
 
-      const nextFiles = [...keptFiles, ...normalizedUploads.files]
+      const nextFiles = [
+        ...keptFiles,
+        ...normalizedUploads.files.map((file) => ({ ...file, id: '0' })),
+      ]
+
       if (!nextFiles.length) {
         throw new ApiError(400, 'At least one document file is required.')
       }
 
       if (removedFileIds.length) {
-        const deletePlaceholders = removedFileIds.map(() => '?').join(', ')
+        const placeholders = removedFileIds.map(() => '?').join(', ')
         await connection.query(
-          `DELETE FROM record_files
-           WHERE record_id = ? AND id IN (${deletePlaceholders})`,
-          [recordId, ...removedFileIds],
+          `DELETE FROM files
+           WHERE record_id = ?
+             AND id IN (${placeholders})`,
+          [numericRecordId, ...removedFileIds],
         )
       }
 
-      await insertRecordFiles(connection, recordId, normalizedUploads.files)
+      await insertFiles(connection, numericRecordId, normalizedUploads.files, null)
 
       await connection.query(
-        `UPDATE records
+        `UPDATE tb_records
          SET
            branch_id = ?,
            subject_id = ?,
            record_date = ?,
            remark = ?,
-           total_pages = ?,
            document_type = ?,
-           document_size_bytes = ?,
-           updated_at = ?
+           total_pages = ?,
+           file_size = ?,
+           modified_at = NOW()
          WHERE id = ?`,
         [
           parsed.data.branchId,
           parsed.data.subjectId,
           parsed.data.recordDate,
           parsed.data.remark ?? '',
-          nextFiles.length,
           deriveDocumentType(nextFiles),
+          nextFiles.length,
           nextFiles.reduce((sum, file) => sum + file.sizeBytes, 0),
-          new Date(),
-          recordId,
+          numericRecordId,
         ],
       )
 
-      return getRecordByIdInternal(recordId, connection)
+      return getRecordByIdInternal(numericRecordId, connection)
     })
 
     await Promise.all(removedFiles.map((file) => deleteStoredFile(file.relativePath)))
-    return record
+    return updatedRecord
   } catch (error) {
     await Promise.all(movedRelativePaths.map((relativePath) => deleteStoredFile(relativePath)))
     throw error
@@ -607,9 +667,14 @@ export const updateRecord = async (
 }
 
 export const deleteRecord = async (recordId: string): Promise<void> => {
+  const numericRecordId = Number(recordId)
+  if (!numericRecordId) {
+    throw new ApiError(404, 'Record not found.')
+  }
+
   const directoryName = await withTransaction(async (connection) => {
-    const record = await getRecordByIdInternal(recordId, connection)
-    await connection.query('DELETE FROM records WHERE id = ?', [recordId])
+    const record = await getRecordByIdInternal(numericRecordId, connection)
+    await connection.query('DELETE FROM tb_records WHERE id = ?', [numericRecordId])
     return record.directoryName
   })
 
@@ -618,21 +683,14 @@ export const deleteRecord = async (recordId: string): Promise<void> => {
 
 export const getRecordViewer = async (recordId: string): Promise<RecordViewerResponse> => {
   const record = await getRecordById(recordId)
-  const categoryMap = new Map<string, RecordFile[]>()
-
-  for (const file of record.files) {
-    const label = file.categoryLabel ?? 'Uploaded Files'
-    const existing = categoryMap.get(label) ?? []
-    existing.push(file)
-    categoryMap.set(label, existing)
-  }
-
   return {
     record,
-    categories: [...categoryMap.entries()].map(([label, files], index) => ({
-      id: `category-${index + 1}`,
-      label,
-      files,
-    })),
+    categories: [
+      {
+        id: 'category-1',
+        label: 'Uploaded Files',
+        files: record.files,
+      },
+    ],
   }
 }

@@ -42,11 +42,8 @@ export const authenticateUser = async (payload: LoginRequest): Promise<SessionUs
     throw new ApiError(400, parsed.error.issues[0]?.message ?? 'Invalid login payload.')
   }
 
-  if (env.legacyLoginMode === 'remote') {
-    if (!env.legacyLoginUrl) {
-      throw new ApiError(500, 'Legacy login API URL is not configured.')
-    }
-
+  const shouldUseRemoteLogin = env.legacyLoginMode === 'remote' && Boolean(env.legacyLoginUrl)
+  if (shouldUseRemoteLogin) {
     try {
       const response = await axios.post(env.legacyLoginUrl, parsed.data, {
         timeout: 10000,
@@ -69,17 +66,20 @@ export const authenticateUser = async (payload: LoginRequest): Promise<SessionUs
 
   const [rows] = await pool.query<
     (DatabaseRow & {
+      id: number
       staff_id: string
-      username: string
-      display_name: string
-      password_hash: string
+      name: string
+      email: string | null
+      password: string
     })[]
   >(
-    `SELECT staff_id, username, display_name, password_hash
-     FROM staff_users
-     WHERE username = ? AND is_active = 1
+    `SELECT id, staff_id, name, email, password
+     FROM tb_account
+     WHERE (staff_id = ? OR email = ? OR name = ?)
+       AND is_active = 1
+       AND status = 1
      LIMIT 1`,
-    [parsed.data.username],
+    [parsed.data.username, parsed.data.username, parsed.data.username],
   )
 
   const matchedUser = rows[0]
@@ -87,14 +87,15 @@ export const authenticateUser = async (payload: LoginRequest): Promise<SessionUs
     throw new ApiError(401, 'Invalid username or password.')
   }
 
-  const isPasswordValid = await verifyPassword(parsed.data.password, matchedUser.password_hash)
+  const isPasswordValid = await verifyPassword(parsed.data.password, matchedUser.password)
   if (!isPasswordValid) {
     throw new ApiError(401, 'Invalid username or password.')
   }
 
   return {
+    accountId: matchedUser.id,
     staffId: matchedUser.staff_id,
-    username: matchedUser.username,
-    displayName: matchedUser.display_name,
+    username: matchedUser.staff_id,
+    displayName: matchedUser.name,
   }
 }

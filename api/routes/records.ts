@@ -51,7 +51,7 @@ router.post(
     const record = await createRecord(
       req.body,
       (req.files as Express.Multer.File[]) ?? [],
-      req.session.user!.staffId,
+      req.session.user!.accountId ?? 0,
     )
 
     res.status(201).json({
