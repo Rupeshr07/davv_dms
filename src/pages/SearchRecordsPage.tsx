@@ -135,7 +135,7 @@ export default function SearchRecordsPage() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y">
         <PageSection
           title="Search Records"
           description="Use a single filter or combine multiple filters. Results are sorted by date in descending order."
