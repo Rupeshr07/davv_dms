@@ -412,10 +412,6 @@ export const createRecord = async (
     throw new ApiError(401, 'Authentication required.')
   }
 
-  if (!uploads.length) {
-    throw new ApiError(400, 'At least one document file is required.')
-  }
-
   let directoryName = ''
   let movedRelativePaths: string[] = []
 
@@ -427,7 +423,9 @@ export const createRecord = async (
       const referenceNumber = buildReferenceNumber(await getNextSequence(connection, year), year)
       directoryName = buildRecordDirectoryName(referenceNumber)
 
-      const normalizedUploads = await normalizeFiles(uploads, directoryName)
+      const normalizedUploads = uploads.length
+        ? await normalizeFiles(uploads, directoryName)
+        : { files: [], movedRelativePaths: [] }
       movedRelativePaths = normalizedUploads.movedRelativePaths
       const documentType = deriveDocumentType(normalizedUploads.files)
       const totalFileSize = normalizedUploads.files.reduce((sum, file) => sum + file.sizeBytes, 0)
@@ -468,7 +466,10 @@ export const createRecord = async (
       const [idRows] = await connection.query<InsertIdRow[]>('SELECT LAST_INSERT_ID() AS id')
       const recordId = Number(idRows[0]?.id)
 
-      await insertFiles(connection, recordId, normalizedUploads.files, accountId)
+      if (normalizedUploads.files.length) {
+        await insertFiles(connection, recordId, normalizedUploads.files, accountId)
+      }
+
       return getRecordByIdInternal(recordId, connection)
     })
   } catch (error) {

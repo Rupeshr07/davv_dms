@@ -7,6 +7,7 @@ import SplashPage from '@/pages/SplashPage'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import RecordFormPage from '@/pages/RecordFormPage'
+import RecordWorkspacePage from '@/pages/RecordWorkspacePage'
 import SearchRecordsPage from '@/pages/SearchRecordsPage'
 import ViewRecordPage from '@/pages/ViewRecordPage'
 import BulkUploadPage from '@/pages/BulkUploadPage'
@@ -37,6 +38,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/records/new" element={<RecordFormPage />} />
+            <Route path="/records/:recordId/workspace" element={<RecordWorkspacePage />} />
             <Route path="/records/search" element={<SearchRecordsPage />} />
             <Route path="/records/:recordId/edit" element={<RecordFormPage />} />
             <Route path="/records/:recordId/view" element={<ViewRecordPage />} />

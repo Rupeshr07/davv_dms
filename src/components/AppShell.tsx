@@ -1,13 +1,6 @@
 import { LogOut } from 'lucide-react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth-store'
-
-const navLinks = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'New Record Entry', to: '/records/new' },
-  { label: 'Search Records', to: '/records/search' },
-  { label: 'Bulk Record Upload', to: '/bulk-upload' },
-]
 
 export default function AppShell() {
   const navigate = useNavigate()
@@ -45,31 +38,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)]">
-          <p className="px-3 pb-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Navigation
-          </p>
-          <nav className="space-y-2">
-            {navLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) =>
-                  [
-                    'block rounded-2xl px-4 py-3 text-sm font-medium transition',
-                    isActive
-                      ? 'bg-slate-900 text-white shadow-lg'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
-                  ].join(' ')
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-
+      <div className="mx-auto max-w-7xl px-6 py-8">
         <main>
           <Outlet />
         </main>

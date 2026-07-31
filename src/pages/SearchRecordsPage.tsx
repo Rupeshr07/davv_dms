@@ -115,6 +115,7 @@ export default function SearchRecordsPage() {
     setPage(1)
   }
 
+
   const handleDelete = async () => {
     if (!deleteTarget) {
       return
@@ -155,6 +156,15 @@ export default function SearchRecordsPage() {
               >
                 <Search className="h-4 w-4" />
                 Search
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => window.location.href = '/dashboard'}
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                
+                Back to Dashboard
               </button>
             </div>
           }

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import PageSection from '@/components/PageSection'
 import SearchableSelect from '@/components/SearchableSelect'
@@ -7,7 +7,7 @@ import FileUploadField from '@/components/FileUploadField'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { appApi, getApiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth-store'
-import type { BranchOption, RecordFile, SubjectOption } from '../../shared/types'
+import type { BranchOption, RecordEntity, RecordFile, SubjectOption } from '../../shared/types'
 
 type FormState = {
   branchId?: number
@@ -23,10 +23,24 @@ const initialFormState: FormState = {
   remark: '',
 }
 
+type DraftFlowState = {
+  preloadedRecord: RecordEntity
+  preloadedBranches: BranchOption[]
+  preloadedSubjects: SubjectOption[]
+  continueDraftFlow: true
+}
+
 export default function RecordFormPage() {
   const { recordId } = useParams()
   const isEditMode = Boolean(recordId)
-  useDocumentTitle(isEditMode ? 'Edit Record' : 'Add New Record')
+  const location = useLocation()
+  const draftFlowState = location.state as DraftFlowState | null
+  const continuingDraftFlow =
+    Boolean(draftFlowState?.continueDraftFlow) &&
+    String(draftFlowState?.preloadedRecord.id) === String(recordId)
+  const pageTitle = continuingDraftFlow || !isEditMode ? 'Add New Record' : 'Edit Record'
+
+  useDocumentTitle(pageTitle)
 
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
@@ -48,6 +62,22 @@ export default function RecordFormPage() {
     const loadPage = async () => {
       try {
         setLoading(true)
+
+        if (continuingDraftFlow && draftFlowState) {
+          setBranches(draftFlowState.preloadedBranches)
+          setSubjects(draftFlowState.preloadedSubjects)
+          setReferenceNumber(draftFlowState.preloadedRecord.referenceNumber)
+          setExistingFiles(draftFlowState.preloadedRecord.files)
+          setFormState({
+            branchId: draftFlowState.preloadedRecord.branchId,
+            subjectId: draftFlowState.preloadedRecord.subjectId,
+            recordDate: draftFlowState.preloadedRecord.recordDate,
+            remark: draftFlowState.preloadedRecord.remark,
+          })
+          setLoading(false)
+          return
+        }
+
         const [nextBranches, nextSubjects] = await Promise.all([
           appApi.getBranches(),
           appApi.getSubjects(),
@@ -99,7 +129,7 @@ export default function RecordFormPage() {
     return () => {
       active = false
     }
-  }, [isEditMode, recordId])
+  }, [continuingDraftFlow, draftFlowState, isEditMode, recordId])
 
   const infoRows = useMemo(
     () => [
@@ -164,7 +194,7 @@ export default function RecordFormPage() {
 
   if (loading) {
     return (
-      <PageSection title={isEditMode ? 'Edit Record' : 'Add New Record'}>
+      <PageSection title={pageTitle}>
         <div className="animate-pulse space-y-4">
           <div className="h-12 rounded-2xl bg-slate-100" />
           <div className="h-40 rounded-3xl bg-slate-100" />
@@ -177,7 +207,7 @@ export default function RecordFormPage() {
   return (
     <div className="space-y-6">
       <PageSection
-        title={isEditMode ? 'Edit Record' : 'Add New Record'}
+        title={pageTitle}
         description="The editable form matches the approved Phase-1 metadata scope."
         actions={
           <Link
@@ -276,7 +306,7 @@ export default function RecordFormPage() {
               className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
-              {saving ? 'Saving...' : isEditMode ? 'Update Record' : 'Save Record'}
+              {saving ? 'Saving...' : continuingDraftFlow || !isEditMode ? 'Save Record' : 'Update Record'}
             </button>
           </div>
         </form>
