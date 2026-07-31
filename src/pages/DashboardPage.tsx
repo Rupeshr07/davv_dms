@@ -1,7 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { ArrowRight, Database, LogOut, Save, Search, Upload, X } from 'lucide-react'
+import {
+  ArrowRight,
+  Database,
+  LockKeyhole,
+  LogOut,
+  Save,
+  Search,
+  ShieldCheck,
+  Upload,
+  X,
+} from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import PageSection from '@/components/PageSection'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { appApi, getApiErrorMessage } from '@/lib/api'
@@ -21,24 +30,68 @@ const quickFormInitialState: QuickFormState = {
   remark: '',
 }
 
-const dashboardOptions = [
+const cardStyles = {
+  blue: {
+    border: 'border-blue-100',
+    shell: 'from-white to-blue-50/80',
+    iconWrap: 'bg-blue-100 text-blue-600',
+    arrowWrap: 'border-blue-100 text-blue-600 shadow-blue-100/80',
+    wave: 'from-blue-100/0 via-blue-100/70 to-blue-200/90',
+  },
+  green: {
+    border: 'border-emerald-100',
+    shell: 'from-white to-emerald-50/80',
+    iconWrap: 'bg-emerald-100 text-emerald-600',
+    arrowWrap: 'border-emerald-100 text-emerald-600 shadow-emerald-100/80',
+    wave: 'from-emerald-100/0 via-emerald-100/70 to-emerald-200/90',
+  },
+  violet: {
+    border: 'border-violet-100',
+    shell: 'from-white to-violet-50/80',
+    iconWrap: 'bg-violet-100 text-violet-600',
+    arrowWrap: 'border-violet-100 text-violet-600 shadow-violet-100/80',
+    wave: 'from-violet-100/0 via-violet-100/70 to-violet-200/90',
+  },
+  red: {
+    border: 'border-red-100',
+    shell: 'from-white to-red-50/80',
+    iconWrap: 'bg-red-100 text-red-500',
+    arrowWrap: 'border-red-100 text-red-500 shadow-red-100/80',
+    wave: 'from-red-100/0 via-red-100/70 to-red-200/90',
+  },
+} as const
+
+const dashboardCards = [
+  {
+    title: 'New Record Entry',
+    description: 'Start a new record in a popup, save the metadata, then continue on the record entry screen.',
+    icon: Database,
+    color: 'blue',
+    type: 'button',
+  },
   {
     title: 'Search Records',
     description: 'Find records by branch, subject, date range, remark keywords, or reference number.',
     to: '/records/search',
     icon: Search,
+    color: 'green',
+    type: 'link',
   },
   {
     title: 'Bulk Record Upload',
     description: 'Access the approved Phase-1 bulk upload entry point.',
     to: '/bulk-upload',
     icon: Upload,
+    color: 'violet',
+    type: 'link',
   },
   {
-    title: 'Logout',
-    description: 'End the current session and return to the login screen.',
-    to: '/logout',
-    icon: LogOut,
+    title: 'Support',
+    description: 'Contact support for any questions or issues.',
+    to: '/support',
+    icon: ShieldCheck,
+    color: 'red',
+    type: 'link',
   },
 ] as const
 
@@ -153,49 +206,91 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageSection
-        title="Dashboard"
-        description="Phase-1 dashboard includes the approved workflow actions."
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setOpenQuickCreate(true)}
-            className="group rounded-3xl border border-slate-200 bg-slate-50 p-6 text-left transition hover:-translate-y-1 hover:border-slate-300 hover:bg-white hover:shadow-xl"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="rounded-2xl bg-slate-900 p-3 text-white">
-                <Database className="h-5 w-5" />
-              </div>
-              <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-slate-900" />
-            </div>
-            <h3 className="mt-6 text-base font-semibold text-slate-900">New Record Entry</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Start a new record in a popup, save the metadata, then continue on the record entry screen.
-            </p>
-          </button>
-
-          {dashboardOptions.map((option) => {
-            const Icon = option.icon
-            return (
-              <Link
-                key={option.title}
-                to={option.to}
-                className="group rounded-3xl border border-slate-200 bg-slate-50 p-6 transition hover:-translate-y-1 hover:border-slate-300 hover:bg-white hover:shadow-xl"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="rounded-2xl bg-slate-900 p-3 text-white">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-slate-900" />
-                </div>
-                <h3 className="mt-6 text-base font-semibold text-slate-900">{option.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{option.description}</p>
-              </Link>
-            )
-          })}
+      <section className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-white/95 px-8 px-20  py-20 shadow-[0_30px_90px_-45px_rgba(15,23,42,0.35)]">
+        <div className="pointer-events-none absolute right-0 top-0 h-40 w-80 bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.14),_transparent_62%)]" />
+        <div className="pointer-events-none absolute right-0 top-0 h-48 w-96 opacity-70">
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,transparent_22%,rgba(148,163,184,0.12)_23%,transparent_24%,transparent_31%,rgba(148,163,184,0.1)_32%,transparent_33%)]" />
         </div>
-      </PageSection>
+
+        <div className="relative">
+          <div className="mb-10">
+            <h1 className="text-[2rem] font-semibold tracking-tight text-slate-900">Dashboard</h1>
+            <p className="mt-2 text-sm font-medium text-slate-500">
+              Phase-1 dashboard includes the approved workflow actions.
+            </p>
+          </div>
+
+          <div className="grid gap-8 md:grid-cols-2">
+            {dashboardCards.map((card) => {
+              const Icon = card.icon
+              const styles = cardStyles[card.color]
+              const cardClassName = `group relative overflow-hidden rounded-[28px] border ${styles.border} bg-gradient-to-br ${styles.shell} p-7 text-left shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_28px_50px_-30px_rgba(15,23,42,0.38)]`
+              const cardContent = (
+                <>
+                  <div className={`pointer-events-none absolute bottom-0 right-0 h-24 w-56 bg-gradient-to-l ${styles.wave} [clip-path:ellipse(75%_85%_at_100%_100%)]`} />
+
+                  <div className="relative flex items-center justify-between gap-5">
+                    <div className={`flex h-[104px] w-[104px] items-center justify-center rounded-full ${styles.iconWrap}`}>
+                      <Icon className="h-11 w-11 stroke-[1.8]" />
+                    </div>
+
+                    <div className="flex flex-1 items-start justify-between gap-6">
+                      <div className="max-w-[320px] pt-2">
+                        <h3 className="text-[1.75rem] font-semibold tracking-tight text-slate-900">{card.title}</h3>
+                        <p className="mt-3 text-lg leading-8 text-slate-500">{card.description}</p>
+                      </div>
+
+                      <div className={`mt-4 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border bg-white ${styles.arrowWrap} shadow-lg transition group-hover:translate-x-1`}>
+                        <ArrowRight className="h-6 w-6" />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )
+
+              if (card.type === 'button') {
+                return (
+                  <button
+                    key={card.title}
+                    type="button"
+                    onClick={() => setOpenQuickCreate(true)}
+                    className={cardClassName}
+                  >
+                    {cardContent}
+                  </button>
+                )
+              }
+
+              return (
+                <Link key={card.title} to={card.to} className={cardClassName}>
+                  {cardContent}
+                </Link>
+              )
+            })}
+          </div>
+
+          <div className="relative mt-8 overflow-hidden rounded-[24px] border border-blue-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)]">
+            <div className="pointer-events-none absolute bottom-0 right-0 h-20 w-64 bg-[radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_58%)]" />
+
+            <div className="relative flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="font-semibold text-slate-900">Secure &amp; Reliable</span>
+                  <span className="hidden text-slate-300 sm:inline">|</span>
+                  <span className="text-slate-500">Your data is protected and access is monitored.</span>
+                </div>
+              </div>
+
+              <div className="hidden items-center gap-2 text-blue-500 md:flex">
+                <LockKeyhole className="h-10 w-10" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {openQuickCreate ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-8">

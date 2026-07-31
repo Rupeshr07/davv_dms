@@ -15,7 +15,7 @@ export default function AppShell() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.16),_transparent_35%),linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)]">
       <header className="border-b border-slate-200/80 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+        <div className="mx-auto flex max-w-8xl items-center justify-between gap-8 px-20 py-8">
 
           {/* Left Section */}
           <div className="flex items-center gap-4">
@@ -48,7 +48,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-0xl px-6 py-4">
+      <div className="mx-auto max-w-8xl px-20 py-8">
         <main>
           <Outlet />
         </main>
